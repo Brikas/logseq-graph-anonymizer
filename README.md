@@ -1,6 +1,6 @@
 # logseq-graph-anonymizer
 
-Anonymize a Logseq/Tine graph before sharing it (e.g. reporting a performance bug), keeping it structurally realistic so the bug still reproduces:
+Scrub PII from a Logseq/Tine graph (Markdown format) before sharing it — e.g. attaching it to a bug report — while keeping it structurally realistic so the bug still reproduces. Anonymizes real page names, tags, and prose into fake-but-plausible text; retains everything structural:
 
 - Retained: page count, exact block tree per page, block ids, `((refs))`, all `key:: value` properties (default and Tine-custom), markdown formatting (bold/italic/code/links), journal filenames (dates aren't sensitive).
 - Replaced: page names, tags, block prose, markdown link labels + URLs (including bare pasted URLs, not just `[label](url)`), and asset file contents.
@@ -75,6 +75,7 @@ Requires Pillow + numpy: `pip install -r requirements.txt`. Not needed otherwise
 - Code (inline and fenced) is anonymized by default like any other content; pass `--keep-code` to preserve it verbatim instead.
 - Asset filenames are assumed unique across the whole graph (Logseq's normal flat `assets/` folder convention) — the fake name is keyed on the filename alone, not its path, so every reference to the same asset resolves to the same fake filename regardless of how many `../` separate the page from it.
 - `config.edn`/`custom.css`/`custom.js`/`export.css` are copied verbatim, not anonymized — if yours embeds real content (a custom.css selector targeting a specific page name, a config.edn default-home page, a saved query filter), it'll leak as-is. Check them by hand before sharing, or delete them from the output.
+- Markdown-format graphs only — only `*.md` files are processed. Logseq/Tine graphs configured to use Org-mode instead aren't supported.
 
 ## License
 
