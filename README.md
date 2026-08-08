@@ -37,14 +37,14 @@ python anonymize_graph.py lookup "dstack"
 
 Re-runs the same deterministic mapping an earlier `anonymize` run used (reads its `salt.bin`) to show what a real page/tag name resolves to — handy for finding your own page in the anonymized output without reversing anything. Case-insensitive, matching how Logseq itself treats page/tag names.
 
-### Testing how guessable your output is (`reverse-guess`)
+### Reverse-mapping a fake name back to the real one (`reverse-guess`)
 
 ```
 python anonymize_graph.py reverse-guess ./anon-test --guess "dstack" --guess "Q3 plan"
 python anonymize_graph.py reverse-guess ./anon-test --wordlist candidates.txt
 ```
 
-With the salt, fake -> real is a dictionary attack, not a hard problem: `HMAC-SHA256` has no work factor, so hashing a guess and checking whether the resulting filename exists in the output is instant. This subcommand runs exactly that check for a list of candidate real page names (`--guess`, repeatable, and/or one-per-line in a `--wordlist` file) against an already-anonymized `dest` folder, and reports which guesses land a match. It's here to demonstrate — and let you personally test — how exposed your output is if `salt.bin` ever leaks, not to weaken the anonymization itself. The fix if this worries you isn't a stronger hash, it's keeping `salt.bin` private.
+For when you spot something in your anonymized output and want to check what it really was: give it candidate real names (`--guess`, repeatable, and/or one-per-line in a `--wordlist` file) plus the `salt.bin` from the run that produced `dest`, and it tells you which candidates match a page actually in there. Under the hood this is a brute-force dictionary check — `HMAC-SHA256` has no work factor, so with the salt and a candidate list, checking is instant — which is also why `salt.bin` must never leak.
 
 ## How the anonymization works
 
@@ -80,3 +80,7 @@ Requires Pillow + numpy: `pip install -r requirements.txt`. Not needed otherwise
 ## License
 
 [MIT](LICENSE)
+
+---
+
+Coded using Claude Sonnet 5.
