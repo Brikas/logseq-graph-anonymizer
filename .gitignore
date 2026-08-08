@@ -1,0 +1,13 @@
+# the salt is what makes the mapping unguessable — never share/commit it
+salt.bin
+
+__pycache__/
+*.py[cod]
+
+logs/
+
+# personal Logseq graph copy + test output — never commit real notes
+source-graph/
+anon-test/
+anon-graph/
+/tmp-*/
