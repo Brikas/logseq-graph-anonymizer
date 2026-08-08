@@ -70,8 +70,7 @@ Requires Pillow + numpy: `pip install -r requirements.txt`. Not needed otherwise
 
 ## Known assumptions / limitations
 
-- Property *values* (`key:: value`) are left fully verbatim, except `alias::`/`tags::` (comma-separated real page names, each anonymized like any other page reference) and `title::` (a page-name override, anonymized the same way) — the rest (`id::`, `collapsed::`, `icon::`, `public::`, `tine.*` view/layout config, etc.) are structural, not user content, so this wasn't worth the extra parsing complexity. Flag it if some other property in your graph carries real content.
-- Emoji in prose are swept up into the surrounding fake text like everything else, so they don't survive as themselves. `icon::` is the one place an emoji is kept verbatim on purpose — it's a single decorative character, not identifying.
+- Property *values* (`key:: value`) are left verbatim except for two cases: `alias::`/`tags::`/`title::` (the entire value is a real page name, anonymized like any other page reference), and any `[[Page]]` link / `#tag` / `((blockref))` embedded inside any other property's value (built-in or custom) — those get anonymized in place, wherever they appear. Everything else in a value (numbers, booleans, enum strings, plain text) stays untouched. Flag it if some other property in your graph carries real content some other way.
 - Journal file dates are passed through unchanged (not treated as identifying).
 - Code (inline and fenced) is anonymized by default like any other content; pass `--keep-code` to preserve it verbatim instead.
 - Asset filenames are assumed unique across the whole graph (Logseq's normal flat `assets/` folder convention) — the fake name is keyed on the filename alone, not its path, so every reference to the same asset resolves to the same fake filename regardless of how many `../` separate the page from it.

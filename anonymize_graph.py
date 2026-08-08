@@ -300,14 +300,24 @@ CODE_FENCE_RE = re.compile(r"^(\s*)```")
 BULLET_RE = re.compile(r"^(\s*)(-\s+)(.*)$")
 BLOCKREF_VALUE_RE = re.compile(r"^\(\([0-9a-fA-F-]{8,}\)\)$")
 
-# Most Logseq/Tine built-in properties (id::, collapsed::, logseq.order-list-type::,
-# any tine.*:: view/layout config) are structural, not user content, so they're
-# kept verbatim below. A few carry real page names/titles and must be anonymized
-# like any other page reference — comma-separated lists (alias, tags point to
-# other real pages) vs. a single override string (title stands in for the page
-# name itself). Source: tine's PAGE_PROP_SPECS in src/editor/properties.ts.
+# alias::/tags:: (comma-separated real page names) and title:: (a page-name
+# override) are known text/list properties whose *entire* value is a bare
+# page name, not wrapped in [[ ]] — handled specially below. Source: tine's
+# PAGE_PROP_SPECS in src/editor/properties.ts.
 PAGE_REF_LIST_PROPERTIES = {"alias", "tags"}
 PAGE_REF_TEXT_PROPERTIES = {"title"}
+
+# Any *other* property (built-in structural ones like id::/collapsed::/icon::/
+# tine.* config, or a graph's own custom properties) can still embed a real
+# [[Page]] link, #tag, or ((blockref)) inside an otherwise-structural value —
+# these get caught and anonymized wherever they appear, while the rest of the
+# value (numbers, booleans, enum strings, plain text) is left untouched.
+PAGE_REF_TOKEN_RE = re.compile(
+    r"(?P<blockref>\(\([0-9a-fA-F-]{8,}\)\))"
+    r"|(?P<wikitag>\#\[\[(?P<wtname>[^\]]+)\]\])"
+    r"|(?P<wikilink>\[\[(?P<wname>[^\]]+)\]\])"
+    r"|(?P<tag>(?<![\w#])\#(?P<tname>[\w/-]+))"
+)
 
 
 def anonymize_page_ref_value(salt: bytes, value: str) -> str:
@@ -317,6 +327,28 @@ def anonymize_page_ref_value(salt: bytes, value: str) -> str:
     if BLOCKREF_VALUE_RE.match(value):
         return value
     return anonymize_page_ref(salt, value)
+
+
+def anonymize_property_value_refs(salt: bytes, value: str) -> str:
+    """Scan any property value for embedded [[Page]] links / #tags /
+    ((blockrefs)) and anonymize just those spans, leaving everything else in
+    the value (numbers, booleans, enum strings, plain text) untouched."""
+    out = []
+    pos = 0
+    for m in PAGE_REF_TOKEN_RE.finditer(value):
+        out.append(value[pos:m.start()])
+        kind = m.lastgroup
+        if kind == "blockref":
+            out.append(m.group(0))
+        elif kind == "wikitag":
+            out.append("#[[" + anonymize_page_ref(salt, m.group("wtname")) + "]]")
+        elif kind == "wikilink":
+            out.append("[[" + anonymize_page_ref(salt, m.group("wname")) + "]]")
+        elif kind == "tag":
+            out.append("#" + anonymize_page_ref(salt, m.group("tname")))
+        pos = m.end()
+    out.append(value[pos:])
+    return "".join(out)
 
 
 def anonymize_page_body(salt: bytes, text: str, keep_code: bool) -> str:
@@ -347,7 +379,11 @@ def anonymize_page_body(salt: bytes, text: str, keep_code: bool) -> str:
             elif key_lower in PAGE_REF_TEXT_PROPERTIES and value.strip():
                 out_lines.append(f"{indent}{key}:: {anonymize_page_ref_value(salt, value.strip())}")
             else:
-                out_lines.append(line)  # structural properties (default + Tine-custom) retained verbatim, incl. id::
+                new_value = anonymize_property_value_refs(salt, value)
+                # Only reformat the line if a ref was actually found and replaced —
+                # keeps every untouched structural property (id::, collapsed::, ...)
+                # byte-for-byte identical to the source.
+                out_lines.append(line if new_value == value else f"{indent}{key}:: {new_value}")
             continue
         bullet_m = BULLET_RE.match(line)
         if bullet_m:
