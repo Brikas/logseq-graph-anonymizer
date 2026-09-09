@@ -1,33 +1,123 @@
 # logseq-graph-anonymizer
 
-Scrub PII from a Logseq/Tine graph (Markdown format) before sharing it — e.g. attaching it to a bug report — while keeping it structurally realistic so the bug still reproduces. Anonymizes real page names, tags, and prose into fake-but-plausible text; retains everything structural:
+Scrub PII from a Logseq/Tine graph (Markdown format) so you can hand it to someone, typically as an attachment on a bug report. The structure survives intact, so the bug still reproduces.
 
-- Retained: page count, exact block tree per page, block ids, `((refs))`, all `key:: value` properties (default and Tine-custom), markdown formatting (bold/italic/code/links), journal filenames (dates aren't sensitive).
-- Replaced: page names, tags, block prose, markdown link labels + URLs (including bare pasted URLs, not just `[label](url)`), and asset file contents.
+- Retained
+  - Page count
+  - Exact block tree per page
+  - Block ids
+  - `((refs))`
+  - All `key:: value` properties, default and Tine-custom
+  - Markdown formatting: bold, italic, code, links
+  - Journal filenames (dates count as non-identifying)
+- Replaced
+  - Page names
+  - Tags
+  - Block prose
+  - Markdown link labels
+  - URLs inside markdown links
+  - Bare pasted URLs
+  - Asset file contents
 
-Only `pages/` and `journals/` are treated as graph content. Logseq's own `logseq/` folder (config, `bak/` auto-backups, recycle bin) and `pages-archive/` (pages the user archived out of the graph) are skipped entirely.
+Only `pages/` and `journals/` are treated as graph content. Logseq's own `logseq/` folder (config, `bak/`, recycle bin) and `pages-archive/` are skipped entirely.
 
-Born from [tine#294](https://github.com/martinkoutecky/tine/discussions/294) — no existing tool covered this.
+Written to answer [tine#294](https://github.com/martinkoutecky/tine/discussions/294), where the hunt for an existing tool came up empty.
+
+## Example
+
+A page with properties, nested blocks, refs, an embed, a code fence and an asset:
+
+````markdown
+title:: Q3 Migration
+alias:: Postgres Cutover
+tags:: Infrastructure, Acme Corp
+
+- Kickoff with [[Priya Raman]] and the [[Acme Corp]] platform team #q3-planning
+  id:: 64f1a1a0-2222-4a22-9a22-000000000001
+  collapsed:: true
+	- Decision: move the billing cluster off RDS before the [[Acme Corp/Renewal]] date.
+	  id:: 64f1a1a0-2222-4a22-9a22-000000000002
+	- Priya owns the schema diff, I own the replication lag dashboards.
+	  Deadline is the last Friday of the quarter, no slip allowed.
+- **Open risks** #risk
+  id:: 64f1a1a0-2222-4a22-9a22-000000000003
+	- *Replication lag spikes* when the nightly `ANALYZE` runs on the `invoices` table.
+		- Mitigation: pin `autovacuum_analyze_scale_factor` per-table, see ((64f1a1a0-2222-4a22-9a22-000000000002))
+		  tine.owner:: me
+		  priority:: high
+	- Connection pooler still points at the old writer — [runbook](https://wiki.acme-corp.example/runbooks/pgbouncer-failover)
+	  id:: 64f1a1a0-2222-4a22-9a22-000000000004
+	- Legal hasn't signed off on the new region https://acme-corp.example/legal/dpa-2026
+- Migration script we settled on
+  id:: 64f1a1a0-2222-4a22-9a22-000000000005
+	- ```bash
+	  pg_dump --schema-only billing_prod | psql -h aurora-billing.internal
+	  ```
+- Architecture sketch from the whiteboard ![cutover diagram](../assets/cutover-whiteboard.png)
+  id:: 64f1a1a0-2222-4a22-9a22-000000000006
+- {{embed ((64f1a1a0-2222-4a22-9a22-000000000003))}}
+- Related: [[Postgres]], [[Priya Raman]], [[Q3 Migration/Rollback Plan]]
+  id:: 64f1a1a0-2222-4a22-9a22-000000000007
+  tine.status:: in-progress
+````
+
+Becomes `pages/Firnuh Gimehf.md`:
+
+````markdown
+title:: Firnuh Gimehf
+alias:: Zasrikje Vunejira
+tags:: Gavo Tude Vims, Nahe Jomk
+
+- Zemasuk jih [[Bamib Dacas]] Mor mozne [[Nahe Jomk]] Dusfises fubiref #Muzluveltuf
+  id:: 64f1a1a0-2222-4a22-9a22-000000000001
+  collapsed:: true
+	- Pojev caza fabgak kibim jabocu maceti liha put tisoze [[Nahe Jomk/Zohfovs]] Cer viteji.
+	  id:: 64f1a1a0-2222-4a22-9a22-000000000002
+	- Torgifki tocgo kedagub pegivac kajdinba seztej cejug cekokfo nis.
+	  Golutuh rehaha pehmojig basti dumires baduc tih pogef kemitev.
+- **Misidaf piz** #Ruge
+  id:: 64f1a1a0-2222-4a22-9a22-000000000003
+	- *Pip cefulbul kesusi kazopoku* Difgor pamono hudell `Nocurul` Cipd gofazev `Dij safl` Doha cibk.
+		- Focopage coceki `Hevujd jahamhan samifagu veknamup` Vojaf zarilola ((64f1a1a0-2222-4a22-9a22-000000000002))
+		  tine.owner:: me
+		  priority:: high
+	- Kebedene kihomme lil numidkic jure sohodci jovhunr [Kule cucrus](https://cebfabel.example/ragpuj)
+	  id:: 64f1a1a0-2222-4a22-9a22-000000000004
+	- Lovefo heti rohde cobarifo dagizoza vofeplag https://gipardov.example/pekmof
+- Vudp rihep sujalolz luluhomo vagumc
+  id:: 64f1a1a0-2222-4a22-9a22-000000000005
+	- ```bash
+	  Fucro molaheju galjum zacv cozovig cij bajcoje cazapvu kopd culah mosmojp
+	  ```
+- Zecocag sopti befik dutdifu hahd kitija ![Birecef hizhufir](../assets/pizcajohohizumumpo.png)
+  id:: 64f1a1a0-2222-4a22-9a22-000000000006
+- {{embed ((64f1a1a0-2222-4a22-9a22-000000000003))}}
+- Voherob: [[Gurojafe]], [[Bamib Dacas]], [[Firnuh Gimehf/Henj Radi Hovc]]
+  id:: 64f1a1a0-2222-4a22-9a22-000000000007
+  tine.status:: in-progress
+````
+
+The tree, the block ids, the refs and the properties all came through untouched. `[[Acme Corp]]` became `[[Nahe Jomk]]` on the tags line and again in the body, because one real name maps to exactly one fake name across the whole graph. Your own run generates a different vocabulary, since the words come from your `salt.bin`.
 
 ## Usage
 
 ```
 python anonymize_graph.py anonymize <source_graph_dir> <output_dir>
 python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --n 50
-python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --include-anonymized-assets  # include anonymized (checkerboard) images
+python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --include-anonymized-assets
 python anonymize_graph.py lookup "Books"
 python anonymize_graph.py reverse-guess ./anon-test --guess "Movies" --wordlist candidates.txt
 ```
 
 Never writes into `source_graph_dir`. Refuses a non-empty `dest` unless `--force`.
 
-### Sampling a subset first (`--n`)
+### Sampling a subset with `--n`
 
-Real graphs run into the thousands of files — `--n 50` anonymizes only 50, picked to span the full file-size distribution (small/medium/large pages alike, not just the first 50 or a plain random 50) so a quick test run still exercises tiny and huge pages both. Assets referenced only by non-sampled pages are skipped too.
+Real graphs run into thousands of files. `--n 50` anonymizes 50 of them, picked to span the full file-size distribution, so a quick test run exercises tiny and huge pages both. Assets referenced only by non-sampled pages get skipped too.
 
-`--random-seed` controls which file gets picked within each size bucket. Fixed at `42` by default. Pass `--random-seed random` for anon-deterministic sample each time. This seed only affects *which pages get sampled*; the anonymization output itself is always salt-based (see below) regardless of this seed.
+`--random-seed` controls which file gets picked inside each size bucket, and defaults to `42`. Pass `random` for a different sample every time. The seed affects *sampling* only, never the anonymization itself, which is always driven by the salt.
 
-### Finding your own pages afterward (`lookup`)
+### Finding your own page with `lookup`
 
 ```
 python anonymize_graph.py lookup "dstack"
@@ -35,47 +125,45 @@ python anonymize_graph.py lookup "dstack"
 # filename: Fake Name.md
 ```
 
-Re-runs the same deterministic mapping an earlier `anonymize` run used (reads its `salt.bin`) to show what a real page/tag name resolves to — handy for finding your own page in the anonymized output without reversing anything. Case-insensitive, matching how Logseq itself treats page/tag names.
+Re-runs an earlier run's mapping (reads its `salt.bin`) to show what a real page/tag name resolved to. Case-insensitive, matching how Logseq treats page/tag names.
 
-### Reverse-mapping a fake name back to the real one (`reverse-guess`)
+### Checking what a fake name really was with `reverse-guess`
 
 ```
 python anonymize_graph.py reverse-guess ./anon-test --guess "dstack" --guess "Q3 plan"
 python anonymize_graph.py reverse-guess ./anon-test --wordlist candidates.txt
 ```
 
-For when you spot something in your anonymized output and want to check what it really was: give it candidate real names (`--guess`, repeatable, and/or one-per-line in a `--wordlist` file) plus the `salt.bin` from the run that produced `dest`, and it tells you which candidates match a page actually in there. Under the hood this is a brute-force dictionary check — `HMAC-SHA256` has no work factor, so with the salt and a candidate list, checking is instant — which is also why `salt.bin` must never leak.
+Give it candidate real names (`--guess`, repeatable, and/or one-per-line in `--wordlist`) plus the `salt.bin` from the run that produced `dest`, and it reports which candidates match a page actually in there. Under the hood that's a brute-force dictionary check. `HMAC-SHA256` has no work factor, so with the salt and a candidate list, checking is instant. Which is also why `salt.bin` must never leak.
 
-## How the anonymization works
+## How it works
 
-Every replacement is `HMAC-SHA256(salt, original_string)` fed into a deterministic word generator. Same input string -> same fake output everywhere it appears (so a page linked from 40 blocks gets one consistent fake name); one changed character -> an unrelated hash -> a completely different fake string. The salt is generated once per install and cached in `salt.bin` (gitignored) so re-runs reproduce the same mapping — delete it for a fresh, unrelated one.
+Every replacement is `HMAC-SHA256(salt, original_string)` fed into a deterministic word generator. The same input string yields the same fake output everywhere it appears, so a page linked from 40 blocks gets one consistent fake name. Change a single character and the hash is unrelated, so the fake string is too. The salt is generated once per install and cached in `salt.bin` (gitignored), which is what makes re-runs reproduce the mapping. Delete it for a fresh one.
 
 **Never share or commit `salt.bin`.** Anyone who has it can test guesses ("was the real page named X?") against your anonymized output.
 
-## Asset handling
+## Assets
 
-By default no `assets/` folder is written at all — images are the least anonymize-able and most identifying part of a graph, so opt-in is the safer default. Image references in page text (`![alt](assets/x.png)`) still get rewritten to fake filenames either way, whether or not the file itself gets copied.
+By default no `assets/` folder gets written at all. Images are the hardest part of a graph to anonymize and the most identifying, so copying them is opt-in. Image references in page text get rewritten to fake filenames either way.
 
-Pass `--include-assets` to copy every asset in as a tiny fixed stub instead — no size or shape information survives, smallest possible output.
+`--include-assets` copies every asset in as a tiny fixed stub: no size or shape information survives, smallest possible output.
 
-Pass `--include-anonymized-assets` to copy images in (`.png`/`.jpg`/`.jpeg` — PDFs and other types still get the plain stub) as a deterministic black/white checkerboard placeholder that approximates the real file's shape:
+`--include-anonymized-assets` copies images in as a deterministic black/white checkerboard. It handles `.png`/`.jpg`/`.jpeg`, and every other type falls back to the plain stub. The checkerboard approximates the real file's shape:
 
-- **Size**: the real file's byte size is log-scaled onto a fixed set of buckets (`1, 2, 3, 4, 16, 32, 48, 64, 128, 256, ...` doubling up to a `8192`px cap) — a generic tiny-icon-to-high-res-photo range, not tuned to any particular graph.
-- **Aspect ratio**: read from the real image (so a 16:9 screenshot doesn't come out square) and snapped to the same bucket list — approximate, not exact, by design.
-- Output stays tiny regardless of bucket (a few KB at most): flat-color checkerboard blocks compress extremely well.
+- **Size**: the real byte size is log-scaled onto fixed buckets (`1, 2, 3, 4, 16, 32, 48, 64, 128, 256, ...` doubling up to `8192`px), a generic range covering tiny icons through high-res photos.
+- **Aspect ratio**: read from the real image, so a 16:9 screenshot stays 16:9, then snapped to the same buckets. It lands near the original without matching it.
+- Output stays a few KB at most: flat-colour checkerboards compress extremely well.
 
-Requires Pillow + numpy: `pip install -r requirements.txt`. Not needed otherwise.
-
-`logseq/config.edn`, `custom.css`, `custom.js` and `export.css` are always copied byte-for-byte into the output, untouched — see caveats below.
+Requires Pillow + numpy: `pip install -r requirements.txt`.
 
 ## Known assumptions / limitations
 
-- Property *values* (`key:: value`) are left verbatim except for two cases: `alias::`/`tags::`/`title::` (the entire value is a real page name, anonymized like any other page reference), and any `[[Page]]` link / `#tag` / `((blockref))` embedded inside any other property's value (built-in or custom) — those get anonymized in place, wherever they appear. Everything else in a value (numbers, booleans, enum strings, plain text) stays untouched. Flag it if some other property in your graph carries real content some other way.
-- Journal file dates are passed through unchanged (not treated as identifying).
-- Code (inline and fenced) is anonymized by default like any other content; pass `--keep-code` to preserve it verbatim instead.
-- Asset filenames are assumed unique across the whole graph (Logseq's normal flat `assets/` folder convention) — the fake name is keyed on the filename alone, not its path, so every reference to the same asset resolves to the same fake filename regardless of how many `../` separate the page from it.
-- `config.edn`/`custom.css`/`custom.js`/`export.css` are copied verbatim, not anonymized — if yours embeds real content (a custom.css selector targeting a specific page name, a config.edn default-home page, a saved query filter), it'll leak as-is. Check them by hand before sharing, or delete them from the output.
-- Markdown-format graphs only — only `*.md` files are processed. Logseq/Tine graphs configured to use Org-mode instead aren't supported.
+- Property *values* are left verbatim, with two exceptions: `alias::`/`tags::`/`title::` (the whole value is a real page name, anonymized like any other reference), and any `[[Page]]` / `#tag` / `((blockref))` embedded inside any other property's value. Numbers, booleans, enum strings and plain text stay untouched. Flag it if some property in your graph carries real content another way.
+- Journal file dates pass through unchanged, counted as non-identifying.
+- Code (inline and fenced) is anonymized by default. `--keep-code` preserves it verbatim.
+- Asset filenames are assumed unique across the graph, following Logseq's flat `assets/` convention. The fake name is keyed on the filename alone, so every reference to one asset resolves to the same fake filename however many `../` separate the page from it.
+- `logseq/config.edn`, `custom.css`, `custom.js` and `export.css` are copied byte-for-byte, untouched. If yours embeds real content (a CSS selector targeting a page name, a `config.edn` default-home page, a saved query filter) it leaks as-is. Check them by hand, or delete them from the output.
+- Markdown graphs only: `*.md` files are processed, so Org-mode graphs are out of scope.
 
 ## License
 
