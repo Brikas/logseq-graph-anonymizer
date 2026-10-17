@@ -1,4 +1,5 @@
+# Reads config.default.yaml and its override layers.
+pyyaml
 # Only needed for --include-anonymized-assets (checkerboard image placeholders).
-# Core anonymization works with the standard library alone.
 Pillow
 numpy

@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+
+# Property keys that stay real, with the values that stay real under each key.
+# Every key missing from this list gets a fake name, and its values get faked.
+#
+# Value rule per key:
+#   any        every value stays (app-generated: ids, booleans, timestamps, emoji)
+#   [a, b, c]  only these values stay (matched case-insensitively); any other value gets faked
+#   []         the key name stays; every value gets faked
+#   null       drops a key inherited from an earlier config layer
+#
+# Under every key, bare booleans, numbers, uuids and ISO dates stay, since they identify nothing.
+# [[Page]] links, #tags and ((block refs)) inside a value are always anonymized.
+#
+# Layers, deep-merged in this order (a later file overrides only the keys it sets):
+#   config.default.yaml  committed defaults (this file)
+#   config.yaml          optional, project-wide additions
+#   config.local.yaml    optional, per-machine, gitignored
+#   --config PATH        optional, one-off override
+#
+# Keys whose values have their own syntax are handled in anonymize_graph.py and need no entry here:
+#   alias, tags, title (page names)
+#   query-properties, query-sort-by (property-key references)
+#   tine.fields, tine.filter, tine.group-by, tine.col-aggregates, tine.formula.* (Tine table config)
+
+keep_properties:
+  # Logseq built-ins, from hidden-/editable-built-in-properties in
+  # deps/graph-parser/src/logseq/graph_parser/property.cljs
+  id: any
+  custom-id: any
+  collapsed: any
+  heading: any
+  background-color: [yellow, red, pink, green, blue, purple, gray]
+  background_color: [yellow, red, pink, green, blue, purple, gray]
+  icon: any
+  public: any
+  exclude-from-graph-view: any
+  template-including-parent: any
+  query-table: any
+  query-sort-desc: any
+  ls-type: [annotation, whiteboard-shape]
+  hl-type: [area]
+  hl-page: any
+  hl-stamp: any
+  hl-color: [yellow, red, green, blue, purple]
+  created-at: any
+  created_at: any
+  updated-at: any
+  last-modified-at: any
+  last_modified_at: any
+  logseq.order-list-type: [number]
+  logseq.macro-name: any
+  logseq.color: any
+  logseq.table.version: any
+  logseq.table.compact: any
+  logseq.table.headers: any
+  logseq.table.hover: any
+  logseq.table.borders: any
+  logseq.table.stripes: any
+  logseq.table.max-width: any
+  # Built-ins whose values are user text: the key stays, the value gets faked
+  template: []
+  filters: []
+  hl-value: []
+  logseq.macro-arguments: []
+  file: []
+  file-path: []
+  macro: []
+  filetags: []
+  # Logseq flashcard (SRS) scheduling
+  card-last-interval: any
+  card-repeats: any
+  card-ease-factor: any
+  card-next-schedule: any
+  card-last-reviewed: any
+  card-last-score: any
+  # Tine table/board/grid config with plain values
+  tine.view: [table, grid, board]
+  tine.header: any
+  tine.col-widths: any
+  tine.tag-table: any
+  # Common user conventions
+  priority: [a, b, c, low, medium, high, urgent]

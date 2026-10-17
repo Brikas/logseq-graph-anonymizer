@@ -6,6 +6,9 @@ __pycache__/
 
 logs/
 
+# per-machine config layer
+config.local.yaml
+
 # personal Logseq graph copy + test output — never commit real notes
 source-graph/
 anon-test/

@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+addopts = "-q -ra --strict-markers --timeout=30"
+pythonpath = ["."]
+testpaths = ["tests"]

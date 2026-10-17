@@ -7,13 +7,18 @@ Scrub PII from a Logseq/Tine graph (Markdown format) so you can hand it to someo
   - Exact block tree per page
   - Block ids
   - `((refs))`
-  - All `key:: value` properties, default and Tine-custom
+  - Logseq and Tine property keys, with their keyword values, as listed in [config.default.yaml](config.default.yaml)
+  - Bare booleans, numbers, uuids and dates under any key
   - Markdown formatting: bold, italic, code, links
   - Journal filenames (dates count as non-identifying)
 - Replaced
   - Page names
   - Tags
   - Block prose
+  - Every other property key (`src::`, `companies::`), consistently across the graph
+  - Every other property value, anonymized like block prose
+  - Tine table config (`tine.fields::`, formulas, filters) rewritten to the fake keys and values, so tables still line up
+  - Page names in `config.edn` (`:favorites`, `:default-home`), and its comments are dropped
   - Markdown link labels
   - URLs inside markdown links
   - Bare pasted URLs
@@ -43,7 +48,7 @@ tags:: Infrastructure, Acme Corp
   id:: 64f1a1a0-2222-4a22-9a22-000000000003
 	- *Replication lag spikes* when the nightly `ANALYZE` runs on the `invoices` table.
 		- Mitigation: pin `autovacuum_analyze_scale_factor` per-table, see ((64f1a1a0-2222-4a22-9a22-000000000002))
-		  tine.owner:: me
+		  owner:: [[Priya Raman]]
 		  priority:: high
 	- Connection pooler still points at the old writer — [runbook](https://wiki.acme-corp.example/runbooks/pgbouncer-failover)
 	  id:: 64f1a1a0-2222-4a22-9a22-000000000004
@@ -58,52 +63,54 @@ tags:: Infrastructure, Acme Corp
 - {{embed ((64f1a1a0-2222-4a22-9a22-000000000003))}}
 - Related: [[Postgres]], [[Priya Raman]], [[Q3 Migration/Rollback Plan]]
   id:: 64f1a1a0-2222-4a22-9a22-000000000007
-  tine.status:: in-progress
+  status:: in-progress
 ````
 
-Becomes `pages/Firnuh Gimehf.md`:
+Becomes `pages/Vucati Zekafu.md`:
 
 ````markdown
-title:: Firnuh Gimehf
-alias:: Zasrikje Vunejira
-tags:: Gavo Tude Vims, Nahe Jomk
+title:: Vucati Zekafu
+alias:: Lulilekidefuvobu
+tags:: Muncisavejapaj, Heb Zos Jiv
 
-- Zemasuk jih [[Bamib Dacas]] Mor mozne [[Nahe Jomk]] Dusfises fubiref #Muzluveltuf
+- Coz sezesi camnodu [[Bebto Bafes]] Nifhaclo [[Heb Zos Jiv]] Gohik zazinijd #Nal Pel Lad
   id:: 64f1a1a0-2222-4a22-9a22-000000000001
   collapsed:: true
-	- Pojev caza fabgak kibim jabocu maceti liha put tisoze [[Nahe Jomk/Zohfovs]] Cer viteji.
+	- Cebatfo goj hohav pamopajl vipepsu muzinac hatotib kobammo [[Heb Zos Jiv/Jafimel]] Kivmenoj.
 	  id:: 64f1a1a0-2222-4a22-9a22-000000000002
-	- Torgifki tocgo kedagub pegivac kajdinba seztej cejug cekokfo nis.
-	  Golutuh rehaha pehmojig basti dumires baduc tih pogef kemitev.
-- **Misidaf piz** #Ruge
+	- Bit dejo cite kared ruz gopuf kifhiln fodezsom bocacil nacketi kidrer.
+	  Famaco dare bedhahu masjimfi lobka gikudal cine ruphural kub.
+- **Lujuheks mozjusz** #Hadi
   id:: 64f1a1a0-2222-4a22-9a22-000000000003
-	- *Pip cefulbul kesusi kazopoku* Difgor pamono hudell `Nocurul` Cipd gofazev `Dij safl` Doha cibk.
-		- Focopage coceki `Hevujd jahamhan samifagu veknamup` Vojaf zarilola ((64f1a1a0-2222-4a22-9a22-000000000002))
-		  tine.owner:: me
+	- *Zav giducece mishetad* Muhita vol vanofama `Kolbedic` Takepakv hacvi `Jor micevumu` Jitamfe.
+		- Jarvus rasedij `Humetelr parethi havab hilenfis` Sujrife kela tatovobe ((64f1a1a0-2222-4a22-9a22-000000000002))
+		  razbo:: [[Bebto Bafes]]
 		  priority:: high
-	- Kebedene kihomme lil numidkic jure sohodci jovhunr [Kule cucrus](https://cebfabel.example/ragpuj)
+	- Sag femacl fathuz pejozu sop faz kufac cebocki gedsuj [Gejaz girfi](https://jozosoci.example/civasb)
 	  id:: 64f1a1a0-2222-4a22-9a22-000000000004
-	- Lovefo heti rohde cobarifo dagizoza vofeplag https://gipardov.example/pekmof
-- Vudp rihep sujalolz luluhomo vagumc
+	- Fohre rocudm dub jekce repehobz panap rurensiz https://hecajekl.example/tivnab
+- Fedbeh pumnuz zeluhol vica rufjac
   id:: 64f1a1a0-2222-4a22-9a22-000000000005
 	- ```bash
-	  Fucro molaheju galjum zacv cozovig cij bajcoje cazapvu kopd culah mosmojp
+	  Vuc zuf dejov sej binos supre kif besisa dush kezbaj sajukje ditf kosen
 	  ```
-- Zecocag sopti befik dutdifu hahd kitija ![Birecef hizhufir](../assets/pizcajohohizumumpo.png)
+- Sicala gikogali hugafa renbidu kodapd vit ![Felalami zov kib](../assets/hidutahvifoneskeho.png)
   id:: 64f1a1a0-2222-4a22-9a22-000000000006
 - {{embed ((64f1a1a0-2222-4a22-9a22-000000000003))}}
-- Voherob: [[Gurojafe]], [[Bamib Dacas]], [[Firnuh Gimehf/Henj Radi Hovc]]
+- Zog falizfup: [[Nef Nil Jac]], [[Bebto Bafes]], [[Vucati Zekafu/Gikefduguvuci]]
   id:: 64f1a1a0-2222-4a22-9a22-000000000007
-  tine.status:: in-progress
+  laziro:: Volakuv pokrepi
 ````
 
-The tree, the block ids, the refs and the properties all came through untouched. `[[Acme Corp]]` became `[[Nahe Jomk]]` on the tags line and again in the body, because one real name maps to exactly one fake name across the whole graph. Your own run generates a different vocabulary, since the words come from your `salt.bin`.
+The tree, the block ids, the refs and the keyword properties (`collapsed::`, `priority:: high`) all came through untouched. The custom keys `owner::` and `status::` became `razbo::` and `laziro::`, and their values got faked. `[[Acme Corp]]` became `[[Heb Zos Jiv]]` on the tags line and again in the body, because one real name maps to exactly one fake name across the whole graph. `[[Priya Raman]]` became `[[Bebto Bafes]]` in the body and inside the `owner::` value alike. Your own run generates a different vocabulary, since the words come from your `salt.bin`.
 
 ## Usage
 
 ```
+pip install -r requirements.txt
 python anonymize_graph.py anonymize <source_graph_dir> <output_dir>
 python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --n 50
+python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --config my-props.yaml
 python anonymize_graph.py anonymize ~/graphs/my-notes ./anon-test --include-anonymized-assets
 python anonymize_graph.py lookup "Books"
 python anonymize_graph.py reverse-guess ./anon-test --guess "Movies" --wordlist candidates.txt
@@ -154,15 +161,17 @@ By default no `assets/` folder gets written at all. Images are the hardest part 
 - **Aspect ratio**: read from the real image, so a 16:9 screenshot stays 16:9, then snapped to the same buckets. It lands near the original without matching it.
 - Output stays a few KB at most: flat-colour checkerboards compress extremely well.
 
-Requires Pillow + numpy: `pip install -r requirements.txt`.
+Uses Pillow + numpy from `requirements.txt`.
 
 ## Known assumptions / limitations
 
-- Property *values* are left verbatim, with two exceptions: `alias::`/`tags::`/`title::` (the whole value is a real page name, anonymized like any other reference), and any `[[Page]]` / `#tag` / `((blockref))` embedded inside any other property's value. Numbers, booleans, enum strings and plain text stay untouched. Flag it if some property in your graph carries real content another way.
+- Property keys and values count as content unless [config.default.yaml](config.default.yaml) keeps them. To keep more (a `status::` key with `todo, doing, done` values), add a `config.local.yaml` or pass `--config`. The file's header explains the layers and value rules.
+- Two real names never share a fake name within a run. When a short name's fake is already taken, it gets re-rolled, so `lookup` can show a different fake than the run used for that name.
 - Journal file dates pass through unchanged, counted as non-identifying.
 - Code (inline and fenced) is anonymized by default. `--keep-code` preserves it verbatim.
 - Asset filenames are assumed unique across the graph, following Logseq's flat `assets/` convention. The fake name is keyed on the filename alone, so every reference to one asset resolves to the same fake filename however many `../` separate the page from it.
-- `logseq/config.edn`, `custom.css`, `custom.js` and `export.css` are copied byte-for-byte, untouched. If yours embeds real content (a CSS selector targeting a page name, a `config.edn` default-home page, a saved query filter) it leaks as-is. Check them by hand, or delete them from the output.
+- `custom.css`, `custom.js` and `export.css` are copied byte-for-byte. `config.edn` gets its page names faked and its comments dropped, while the rest (macros, default queries) is copied as-is. If yours embeds real content there (a CSS selector targeting a page name, a saved query filter), it leaks. Check them by hand, or delete them from the output.
+- `{{query}}` macros in block text get their arguments faked like prose, so queries in the output return nothing.
 - Markdown graphs only: `*.md` files are processed, so Org-mode graphs are out of scope.
 
 ## License

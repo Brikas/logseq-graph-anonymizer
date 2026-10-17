@@ -26,7 +26,10 @@ import os
 import random
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 __version__ = "0.2.0"
 
@@ -148,17 +151,48 @@ def fake_syllables(rng: random.Random, target_len: int) -> str:
     return out[: max(target_len, 2)]
 
 
+class UniqueFakes:
+    """One run's real -> fake mapping for names that must stay distinct (page
+    names, property keys). Short names have a tiny fake space (3 letters for a
+    3-letter page name), so two real names can hash to one fake and their
+    links would merge. A fake already taken by another real name is re-rolled
+    with an attempt counter. Compared case-insensitively, matching Logseq and
+    case-insensitive filesystems."""
+
+    def __init__(self):
+        self.by_real = {}
+        self.taken = set()
+
+    def get(self, real: str, make, is_reserved=lambda fake: False) -> str:
+        key = real.lower()
+        if key not in self.by_real:
+            for attempt in range(1000):
+                fake = make(key if attempt == 0 else f"{key}#{attempt}")
+                if fake.lower() not in self.taken and not is_reserved(fake.lower()):
+                    break
+            else:
+                sys.exit(f"Could not generate a unique fake for {real!r}")
+            self.by_real[key] = fake
+            self.taken.add(fake.lower())
+        return self.by_real[key]
+
+
+PAGE_NAME_FAKES = UniqueFakes()
+
+
 def fake_name(salt: bytes, text: str) -> str:
     """For page names / tags / link labels: 1-3 human-readable fake words,
     length roughly matched to the original so page-size-in-kb stays close.
     Hashed case-insensitively — Logseq treats #Project and [[project]] as the
     same page, so they must map to the same fake name."""
-    rng = rng_for(salt, text.lower())
-    n_words = 1 if len(text) < 8 else rng.randint(1, 3)
-    target = max(len(text), 3)
-    per_word = max(target // n_words, 3)
-    words = [fake_syllables(rng, per_word).capitalize() for _ in range(n_words)]
-    return " ".join(words)
+    def make(seed: str) -> str:
+        rng = rng_for(salt, seed)
+        n_words = 1 if len(text) < 8 else rng.randint(1, 3)
+        target = max(len(text), 3)
+        per_word = max(target // n_words, 3)
+        return " ".join(fake_syllables(rng, per_word).capitalize() for _ in range(n_words))
+
+    return PAGE_NAME_FAKES.get(text, make)
 
 
 def fake_prose(salt: bytes, text: str) -> str:
@@ -197,6 +231,13 @@ def fake_asset_filename(salt: bytes, filename: str) -> str:
     return fake_syllables(rng_for(salt, filename), max(len(stem), 6)) + ext.lower()
 
 
+FILE_EXTENSIONS = {
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "md", "txt", "org", "edn", "csv", "json",
+    "html", "htm", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "epub", "zip",
+    "mp3", "mp4", "m4a", "wav", "mov", "webm", "py", "js", "ts", "excalidraw",
+}
+
+
 def anonymize_link_url(salt: bytes, url: str) -> str:
     """Web links keep looking like web links ('.example' is an IANA-reserved
     TLD that will never resolve, so fake web links are inert). A path through
@@ -216,8 +257,11 @@ def anonymize_link_url(salt: bytes, url: str) -> str:
     parts = rest.split("/")
     ext = ""
     if "." in parts[-1]:
-        parts[-1], ext = parts[-1].rsplit(".", 1)
-        ext = "." + ext
+        stem, candidate = parts[-1].rsplit(".", 1)
+        # Only a known file type survives: "site.dk" or "[a.com] - title"
+        # would otherwise leak their tail as a fake "extension".
+        if candidate.lower() in FILE_EXTENSIONS:
+            parts[-1], ext = stem, "." + candidate
     new_parts = [fake_syllables(rng_for(salt, p), max(len(p), 3)) for p in parts if p]
     return prefix + "/".join(new_parts) + ext
 
@@ -307,11 +351,52 @@ BLOCKREF_VALUE_RE = re.compile(r"^\(\([0-9a-fA-F-]{8,}\)\)$")
 PAGE_REF_LIST_PROPERTIES = {"alias", "tags"}
 PAGE_REF_TEXT_PROPERTIES = {"title"}
 
-# Any *other* property (built-in structural ones like id::/collapsed::/icon::/
-# tine.* config, or a graph's own custom properties) can still embed a real
-# [[Page]] link, #tag, or ((blockref)) inside an otherwise-structural value —
-# these get caught and anonymized wherever they appear, while the rest of the
-# value (numbers, booleans, enum strings, plain text) is left untouched.
+# Keys whose value references other property keys: query-properties:: holds an
+# EDN vector of :keywords, query-sort-by:: a single key. page/block are
+# Logseq's own query-table columns.
+KEY_REFERENCE_PROPERTIES = {"query-properties", "query-sort-by"}
+QUERY_COLUMNS = {"page", "block"}
+QUERY_KEYWORD_RE = re.compile(r"(?<![\w-]):?([A-Za-z_][\w.-]*)")
+
+# Tine table config whose values reference field names, which are property
+# keys. Source: PARTICIPATING_KEYS and FORMULA_PREFIX in tine
+# src/sheet/renameField.ts, BUILTIN_FIELDS in src/sheet/config.ts.
+TINE_FIELDS = "tine.fields"
+TINE_GROUP_BY = "tine.group-by"
+TINE_AGGREGATES = "tine.col-aggregates"
+TINE_FILTER = "tine.filter"
+TINE_FORMULA_PREFIX = "tine.formula."
+TINE_BUILTIN_FIELDS = {"state", "priority", "scheduled", "deadline", "tags", "page"}
+FORMULA_RESERVED = {"true", "false", "null", "formula"}
+FORMULA_TOKEN_RE = re.compile(
+    r"(?P<string>\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')"
+    r"|(?P<number>\d[\w.]*)"
+    r"|(?P<ident>[A-Za-z_][A-Za-z0-9_-]*)"
+)
+FIELD_ID_RE = re.compile(r"^(\s*)(prop|formula):(.+?)(\s*)$")
+
+# Keys with their own value syntax, handled in code: they keep their name
+# whatever the config says.
+STRUCTURED_KEYS = (PAGE_REF_LIST_PROPERTIES | PAGE_REF_TEXT_PROPERTIES | KEY_REFERENCE_PROPERTIES
+                   | {TINE_FIELDS, TINE_GROUP_BY, TINE_AGGREGATES, TINE_FILTER})
+
+# Any value is real content unless the config allows it or it is a bare
+# literal carrying nothing identifying: boolean, number (optionally with a
+# short unit: 323px, 14d), uuid, ISO date/datetime (SRS card-* dates, ...).
+SAFE_LITERAL_RE = re.compile(
+    r"^(?:true|false"
+    r"|-?\d+(?:\.\d+)?(?:[a-z]{1,3}|%)?"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"|\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?)$",
+    re.IGNORECASE,
+)
+# A value that is just a path into assets/ (banner::, file-path::) is faked
+# like an image src, so it still points at the renamed asset file.
+ASSET_PATH_VALUE_RE = re.compile(r"^(?:\.\.?/)*assets/\S+$")
+PATH_PROPERTIES = {"file-path"}
+
+# Kept values can still embed a real [[Page]] link, #tag, or ((blockref)) —
+# these get caught and anonymized wherever they appear.
 PAGE_REF_TOKEN_RE = re.compile(
     r"(?P<blockref>\(\([0-9a-fA-F-]{8,}\)\))"
     r"|(?P<wikitag>\#\[\[(?P<wtname>[^\]]+)\]\])"
@@ -351,7 +436,227 @@ def anonymize_property_value_refs(salt: bytes, value: str) -> str:
     return "".join(out)
 
 
-def anonymize_page_body(salt: bytes, text: str, keep_code: bool) -> str:
+PROPERTY_KEY_FAKES = UniqueFakes()
+
+CONFIG_SCHEMA_VERSION = "1.0.0"
+CONFIG_LAYERS = ["config.default.yaml", "config.yaml", "config.local.yaml"]
+
+
+@dataclass(frozen=True)
+class PropertyPolicy:
+    """Which property keys keep their real name, and which of their values
+    stay real. keep maps a lowercased key to None (every value stays) or to
+    the lowercased set of allowed values."""
+    keep: dict
+
+    def keeps_key(self, key_lower: str) -> bool:
+        return (key_lower in self.keep or key_lower in STRUCTURED_KEYS
+                or key_lower.startswith(TINE_FORMULA_PREFIX))
+
+    def allows_value(self, key_lower: str, value: str) -> bool:
+        if key_lower not in self.keep:
+            return False
+        allowed = self.keep[key_lower]
+        return allowed is None or value.lower() in allowed
+
+    def allowed_anywhere(self, value: str) -> bool:
+        return any(allowed and value.lower() in allowed for allowed in self.keep.values())
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    out = dict(base)
+    for key, value in override.items():
+        out[key] = deep_merge(out[key], value) if isinstance(out.get(key), dict) and isinstance(value, dict) else value
+    return out
+
+
+def check_schema_version(found, source: Path) -> None:
+    """First number differs: the file cannot be read, exit. Second differs:
+    the file may use options this version ignores or lacks, warn loudly."""
+    got, want = str(found).split("."), CONFIG_SCHEMA_VERSION.split(".")
+    if len(got) != 3 or got[0] != want[0]:
+        sys.exit(f"{source}: schema_version {found!r} is incompatible with this tool's {CONFIG_SCHEMA_VERSION}")
+    if got[1] != want[1]:
+        msg = f"WARNING: {source}: schema_version {found} differs from this tool's {CONFIG_SCHEMA_VERSION}"
+        print(msg, file=sys.stderr, flush=True)
+        LOG.warning(msg)
+
+
+def load_property_policy(extra_config: Path = None) -> PropertyPolicy:
+    """Deep-merge the config layers next to this script (missing optional
+    layers skipped), then an explicit --config file, into a PropertyPolicy."""
+    paths = [Path(__file__).parent / name for name in CONFIG_LAYERS]
+    if not paths[0].exists():
+        sys.exit(f"Missing {paths[0]} — it ships with the tool and lists the properties kept real.")
+    if extra_config is not None:
+        if not extra_config.exists():
+            sys.exit(f"--config file {extra_config} does not exist.")
+        paths.append(extra_config)
+    merged = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        layer = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if "schema_version" not in layer:
+            sys.exit(f"{path}: missing schema_version (this tool reads {CONFIG_SCHEMA_VERSION}).")
+        check_schema_version(layer["schema_version"], path)
+        merged = deep_merge(merged, layer)
+
+    keep = {}
+    for key, rule in (merged.get("keep_properties") or {}).items():
+        if rule is None:
+            continue
+        if rule == "any":
+            keep[str(key).lower()] = None
+        elif isinstance(rule, list):
+            keep[str(key).lower()] = frozenset(str(v).lower() for v in rule)
+        else:
+            sys.exit(f"keep_properties.{key}: expected 'any', a list of values, or null, got {rule!r}")
+    return PropertyPolicy(keep)
+
+
+def fake_property_key(salt: bytes, key: str, policy: PropertyPolicy) -> str:
+    """Property keys are names too (companies::, skills::). A key the policy
+    keeps stays; any other gets a fake one. Lowercase, because Logseq treats
+    Src:: and src:: as one key. Each -/_/. segment is faked on its own so the
+    key's shape survives. Re-rolled if it lands on a reserved name."""
+    key_lower = key.lower()
+    if policy.keeps_key(key_lower):
+        return key
+    parts = re.split(r"([-_.])", key_lower)
+
+    def make(seed: str) -> str:
+        attempt = seed.rpartition("#")[2] if "#" in seed else "0"
+        return "".join(
+            p if p in {"-", "_", "."} or not p else fake_syllables(rng_for(salt, f"key:{attempt}:{p}"), max(len(p), 3))
+            for p in parts
+        )
+
+    def is_reserved(fake: str) -> bool:
+        return (policy.keeps_key(fake) or fake in TINE_BUILTIN_FIELDS or fake in FORMULA_RESERVED
+                or fake in QUERY_COLUMNS or fake.startswith("tine."))
+
+    return PROPERTY_KEY_FAKES.get(key_lower, make, is_reserved)
+
+
+def fake_field_name(salt: bytes, name: str, policy: PropertyPolicy) -> str:
+    """A Tine field name is a property key, except Tine's own built-in columns."""
+    return name if name.lower() in TINE_BUILTIN_FIELDS else fake_property_key(salt, name, policy)
+
+
+def anonymize_property_value(salt: bytes, key: str, value: str, policy: PropertyPolicy, keep_code: bool) -> str:
+    """Every property value counts as content, except values the policy allows
+    for this key and bare non-identifying literals: those stay (refs inside
+    still anonymized). Everything else goes through the same inline anonymizer
+    as block prose, so links, URLs, refs and plain text in it are faked exactly
+    as they would be in a block."""
+    key_lower = key.lower()
+    stripped = value.strip()
+    if not stripped or SAFE_LITERAL_RE.match(stripped) or policy.allows_value(key_lower, stripped):
+        return anonymize_property_value_refs(salt, value)
+    if key_lower in PATH_PROPERTIES or ASSET_PATH_VALUE_RE.match(stripped):
+        return anonymize_link_url(salt, stripped)
+    return anonymize_inline(salt, stripped, keep_code)
+
+
+def anonymize_tine_expression(salt: bytes, expr: str, policy: PropertyPolicy) -> str:
+    """Tine formula/filter language: bare identifiers are fields (property
+    keys), `name(` is a function, `x.name` a member, `formula.name` a formula
+    ref. Field and formula names get faked like keys; "quoted" strings like
+    values, unless the config allows them under some key."""
+    out = []
+    pos = 0
+    for m in FORMULA_TOKEN_RE.finditer(expr):
+        out.append(expr[pos:m.start()])
+        text = m.group(0)
+        if m.lastgroup == "string":
+            inner = text[1:-1]
+            keep = not inner or SAFE_LITERAL_RE.match(inner) or policy.allowed_anywhere(inner)
+            out.append(text if keep else text[0] + fake_prose(salt, inner) + text[0])
+        elif m.lastgroup == "ident":
+            before, after = expr[:m.start()].rstrip(), expr[m.end():].lstrip()
+            if text in FORMULA_RESERVED or after.startswith("("):
+                out.append(text)
+            elif before.endswith("."):
+                is_formula_ref = re.search(r"(?<![\w-])formula\s*\.$", before)
+                out.append(fake_property_key(salt, text, policy) if is_formula_ref else text)
+            else:
+                out.append(fake_field_name(salt, text, policy))
+        else:
+            out.append(text)
+        pos = m.end()
+    out.append(expr[pos:])
+    return "".join(out)
+
+
+def anonymize_field_id(salt: bytes, field_id: str, policy: PropertyPolicy) -> str:
+    """A Tine column id: prop:<key>, formula:<name>, a built-in field, or a
+    column index. Only the first two carry a name."""
+    m = FIELD_ID_RE.match(field_id)
+    if not m:
+        return field_id
+    lead, kind, name, trail = m.groups()
+    return f"{lead}{kind}:{fake_field_name(salt, name, policy)}{trail}"
+
+
+def anonymize_tine_fields(salt: bytes, value: str, policy: PropertyPolicy, keep_code: bool) -> str:
+    """tine.fields:: name=type;name=enum:a,b,c — field names faked like keys,
+    enum options faked like that key's values so they still match the rows."""
+    out = []
+    for segment in value.split(";"):
+        name, eq, token = segment.partition("=")
+        if not eq:
+            out.append(fake_prose(salt, segment) if segment.strip() else segment)
+            continue
+        bare = name.strip()
+        new_name = name.replace(bare, fake_field_name(salt, bare, policy), 1) if bare else name
+        type_token = token.strip()
+        if type_token.startswith("enum:"):
+            options = [o.strip() for o in type_token[len("enum:"):].split(",")]
+            faked = ",".join(anonymize_property_value(salt, bare, o, policy, keep_code) if o else o for o in options)
+            token = token.replace(type_token, "enum:" + faked, 1)
+        out.append(f"{new_name}={token}")
+    return ";".join(out)
+
+
+def anonymize_property_line(salt: bytes, line: str, policy: PropertyPolicy, keep_code: bool) -> str:
+    """One `key:: value` line: the key through the policy, the value through
+    whichever syntax that key's value has. Returns the line byte-for-byte when
+    nothing changed (id::, collapsed::, ...)."""
+    indent, key, value = PROPERTY_RE.match(line).groups()
+    key_lower = key.lower()
+    new_key = fake_property_key(salt, key, policy)
+    if key_lower in PAGE_REF_LIST_PROPERTIES:
+        new_value = ", ".join(anonymize_page_ref_value(salt, v.strip()) for v in value.split(",") if v.strip())
+    elif key_lower in PAGE_REF_TEXT_PROPERTIES:
+        new_value = anonymize_page_ref_value(salt, value.strip()) if value.strip() else value
+    elif key_lower in KEY_REFERENCE_PROPERTIES:
+        new_value = QUERY_KEYWORD_RE.sub(
+            lambda m: m.group(0) if m.group(1).lower() in QUERY_COLUMNS
+            else m.group(0)[: -len(m.group(1))] + fake_property_key(salt, m.group(1), policy),
+            value,
+        )
+    elif key_lower == TINE_FIELDS:
+        new_value = anonymize_tine_fields(salt, value, policy, keep_code)
+    elif key_lower == TINE_GROUP_BY:
+        new_value = anonymize_field_id(salt, value, policy)
+    elif key_lower == TINE_AGGREGATES:
+        new_value = ";".join(
+            anonymize_field_id(salt, seg.partition("=")[0], policy) + "".join(seg.partition("=")[1:])
+            for seg in value.split(";")
+        )
+    elif key_lower == TINE_FILTER or key_lower.startswith(TINE_FORMULA_PREFIX):
+        new_value = anonymize_tine_expression(salt, value, policy)
+        if key_lower.startswith(TINE_FORMULA_PREFIX):
+            new_key = key[: len(TINE_FORMULA_PREFIX)] + fake_property_key(salt, key[len(TINE_FORMULA_PREFIX):], policy)
+    else:
+        new_value = anonymize_property_value(salt, key, value, policy, keep_code)
+    if new_key == key and new_value == value:
+        return line
+    return f"{indent}{new_key}:: {new_value}"
+
+
+def anonymize_page_body(salt: bytes, text: str, keep_code: bool, policy: PropertyPolicy) -> str:
     lines = text.split("\n")
     out_lines = []
     in_fence = False
@@ -369,26 +674,17 @@ def anonymize_page_body(salt: bytes, text: str, keep_code: bool) -> str:
         if in_fence:
             out_lines.append(line if keep_code else fake_prose(salt, line))
             continue
-        prop_m = PROPERTY_RE.match(line)
-        if prop_m:
-            indent, key, value = prop_m.groups()
-            key_lower = key.lower()
-            if key_lower in PAGE_REF_LIST_PROPERTIES:
-                names = [anonymize_page_ref_value(salt, v.strip()) for v in value.split(",") if v.strip()]
-                out_lines.append(f"{indent}{key}:: {', '.join(names)}")
-            elif key_lower in PAGE_REF_TEXT_PROPERTIES and value.strip():
-                out_lines.append(f"{indent}{key}:: {anonymize_page_ref_value(salt, value.strip())}")
-            else:
-                new_value = anonymize_property_value_refs(salt, value)
-                # Only reformat the line if a ref was actually found and replaced —
-                # keeps every untouched structural property (id::, collapsed::, ...)
-                # byte-for-byte identical to the source.
-                out_lines.append(line if new_value == value else f"{indent}{key}:: {new_value}")
+        if PROPERTY_RE.match(line):
+            out_lines.append(anonymize_property_line(salt, line, policy, keep_code))
             continue
         bullet_m = BULLET_RE.match(line)
         if bullet_m:
             indent, dash, rest = bullet_m.groups()
-            out_lines.append(indent + dash + anonymize_inline(salt, rest, keep_code))
+            # "- key:: value" opens a properties-only block
+            if PROPERTY_RE.match(rest):
+                out_lines.append(indent + dash + anonymize_property_line(salt, rest, policy, keep_code))
+            else:
+                out_lines.append(indent + dash + anonymize_inline(salt, rest, keep_code))
             continue
         # non-bulleted continuation line: keep leading whitespace, fake the rest
         stripped = line.lstrip(" \t")
@@ -442,6 +738,57 @@ def referenced_asset_names(files: list) -> set:
     return names
 
 
+EDN_STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
+EDN_FAVORITES_RE = re.compile(r"(:favorites\s*\[)([^\]]*)(\])")
+EDN_DEFAULT_HOME_RE = re.compile(r'(:default-home\s*\{[^}]*?:page\s*")((?:\\.|[^"\\])*)(")')
+# Config sets of property keys, e.g. :block-hidden-properties #{:hidden}
+EDN_KEY_SET_RE = re.compile(r"(:(?:block-hidden-properties|property-pages/excludelist)\s*#\{)([^}]*)(\})")
+EDN_KEYWORD_RE = re.compile(r":([A-Za-z_][\w.-]*)")
+
+
+def strip_edn_comments(text: str) -> str:
+    """Drop every `;` comment (to end of line) that sits outside a string."""
+    out = []
+    in_string = escaped = in_comment = False
+    for ch in text:
+        if in_comment:
+            if ch == "\n":
+                in_comment = False
+                out.append(ch)
+            continue
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == ";":
+            in_comment = True
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def scrub_config_edn(salt: bytes, text: str, policy: PropertyPolicy) -> str:
+    """config.edn is app config, but :favorites and :default-home name real
+    pages, key sets like :block-hidden-properties name real property keys, and
+    comments can hold anything. Names get the same fakes as in the pages, so
+    they still resolve, and every comment is dropped."""
+    def fake_strings(segment: str) -> str:
+        return EDN_STRING_RE.sub(lambda s: '"' + anonymize_page_ref(salt, s.group(1)) + '"', segment)
+
+    def fake_keywords(segment: str) -> str:
+        return EDN_KEYWORD_RE.sub(lambda k: ":" + fake_property_key(salt, k.group(1), policy), segment)
+
+    text = strip_edn_comments(text)
+    text = EDN_FAVORITES_RE.sub(lambda m: m.group(1) + fake_strings(m.group(2)) + m.group(3), text)
+    text = EDN_KEY_SET_RE.sub(lambda m: m.group(1) + fake_keywords(m.group(2)) + m.group(3), text)
+    return EDN_DEFAULT_HOME_RE.sub(lambda m: m.group(1) + anonymize_page_ref(salt, m.group(2)) + m.group(3), text)
+
+
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}  # PDFs and everything else keep the plain stub
 
 # App/theme config living in logseq/ (not graph content, so not swept up by
@@ -459,7 +806,9 @@ def anonymize_graph(
     sample_seed: int = None,
     include_anonymized_assets: bool = False,
     include_assets: bool = False,
+    policy: PropertyPolicy = None,
 ) -> None:
+    policy = policy or load_property_policy()
     # Assets are excluded by default (no assets/ folder at all) — a graph's
     # images are usually the least anonymize-able and most identifying part of
     # a share, so opt-in is the safer default. Either --include-assets (plain
@@ -514,7 +863,7 @@ def anonymize_graph(
         out_path = dest / new_rel
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
-            anonymize_page_body(salt, text, keep_code), encoding="utf-8"
+            anonymize_page_body(salt, text, keep_code, policy), encoding="utf-8"
         )
 
     LOG.info("writing %d assets (excluded: %s, checkerboard placeholders: %s)",
@@ -543,7 +892,10 @@ def anonymize_graph(
         if src_config.exists():
             out_path = dest / "logseq" / name
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(src_config.read_bytes())
+            if name == "config.edn":
+                out_path.write_text(scrub_config_edn(salt, src_config.read_text(encoding="utf-8"), policy), encoding="utf-8")
+            else:
+                out_path.write_bytes(src_config.read_bytes())
             config_copied += 1
             LOG.info("copied config file verbatim: logseq/%s", name)
 
@@ -618,6 +970,12 @@ def main():
                          help="Where to cache the random salt (default: salt.bin next to this script). "
                               "NEVER commit or share this file — sharing it lets someone reverse the mapping "
                               "against known/guessed inputs.")
+    p_anon.add_argument("--config", type=Path, default=None,
+                         help="Extra YAML layer merged on top of config.default.yaml / config.yaml / "
+                              "config.local.yaml, e.g. to keep more property keys or values real. "
+                              "Example: --config my-props.yaml with\n"
+                              "  schema_version: \"1.0.0\"\n"
+                              "  keep_properties: {status: [todo, doing, done]}")
     p_anon.add_argument("--keep-code", action="store_true",
                          help="Leave inline `code` and fenced code blocks verbatim instead of anonymizing them")
     p_anon.add_argument("--force", action="store_true", help="Allow writing into a non-empty dest dir")
@@ -689,9 +1047,10 @@ def main():
         args.seed_file.write_bytes(salt)
         print(f"Generated new salt at {args.seed_file} (keep this private, delete it for a fresh mapping)")
 
+    policy = load_property_policy(args.config)
     sample_seed = int.from_bytes(os.urandom(8), "big") if args.random_seed == "random" else int(args.random_seed)
     anonymize_graph(args.source, args.dest, salt, args.keep_code, args.force, args.n, sample_seed,
-                     args.include_anonymized_assets, args.include_assets)
+                     args.include_anonymized_assets, args.include_assets, policy)
 
 
 if __name__ == "__main__":
